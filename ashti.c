@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+//struct to handle the request information
 typedef struct parsed_request{
     char *file;
     char *HTTP;
@@ -23,7 +24,10 @@ typedef struct parsed_request{
     char *mess;
 }request;
 
+//parse requests
 struct parsed_request *parse_func(char *);
+
+//handle signal
 void sig_handler(int signum);
 ///COPIED CODE///
 //SOURCE: network/day03/tcp_server.c
@@ -57,14 +61,15 @@ int main(int argc, char *argv[])
     
     //create an array to hold the port number, using the uid as the port. 
     char port[8];
-    snprintf(port, sizeof(port), "%hu", (getuid()+1000));
+    snprintf(port, sizeof(port), "%hu", (getuid()));
 
     //Create structs and populate the informaton for addrinfo
     struct addrinfo *results;
+    
 
     //Null out the struct so you can assign certain fields
-    struct addrinfo  hints = {0};
-    hints.ai_family = PF_UNSPEC;
+    struct addrinfo hints = {0};
+    hints.ai_family = PF_UNSPEC; 
     hints.ai_socktype = SOCK_STREAM;
 
     //get the information necessary to populate results
@@ -120,7 +125,6 @@ int main(int argc, char *argv[])
     char *directory = NULL;
 
     directory = argv[1];
-    printf("%s\n", directory);
     err = access(directory, F_OK);
     if(err == -1)
     {
@@ -141,13 +145,13 @@ int main(int argc, char *argv[])
 
    
     char *good = "HTTP/1.1 200 OK\n";
-    char *content = "Content-type: text/html\n\n\n";
+    char *content = "Content-type: text/html\n";
     int nmemb;
     FILE *html;
+    char *finish = "\n\n";
     char read[256] = {0};
     int strchk = '\0';
-    char *fnf = " 404 Not Found\n";
-    char *OK = " 200 OK\n";
+    char *fnf = "HTTP/1.1 404 Not Found";
     //Partially Copied Code
     //Author: Liam Echlin
     //Source: networking/day03/tcp_server.c
@@ -159,19 +163,22 @@ int main(int argc, char *argv[])
         char buf[256] = {0};
         struct sockaddr_storage client; 
         socklen_t client_sz = sizeof(client);
-         
+        
+        //accpet block to accpet connnecitons 
         remote = accept(sd, (struct sockaddr *)&client, &client_sz);
         if(remote < 0)
         {
             perror("could not accept connection");
             continue;
         }
-
+        //fork on new connections 
         pid_t child = fork();
         if(child == 0)
         {
             close(sd);
-            
+            //receive the information and then parse it.
+            //This should be in a while loop and read until /n/n is read, however, this was
+            //not apparent until too late in the project and as a result it was not done. 
             ssize_t received = recv(remote, buf, sizeof(buf)-1, 0);
              if (received < 0)
             {
@@ -179,39 +186,49 @@ int main(int argc, char *argv[])
             }
             buf[received] = '\0';        
             
-                          
+            //parse out the received data
             response = parse_func(buf);
+            
+            //print server error code. doesn't work with browser, dont know why
             if(response->flag < 0 )
             {
+                
                 send(remote, response->mess, strlen(response->mess), 0);
+                send(remote, content, strlen(content), 0);
                 exit(0);
             }
+            //its in the cgi bin -> does work with browser.. dont know why
             else if(response->flag > 0)
             {
                 html = popen(response->file, "r");                    
             }
+            //if its a html -> doens't work with browser, don't know why.
             else
-            
-            html = fopen(response->file, "r");
+            {
+                html = fopen(response->file, "r");
+            }
+            //if the file isnt found
             if(!html)
             {
-                strncat(response->HTTP, fnf, strlen(fnf));
-                send(remote, response->HTTP, strlen(response->HTTP), 0);
+                send(remote, fnf, strlen(fnf), 0);
                 send(remote, content, strlen(content), 0);
+                free(response);
+                close(remote);
                 exit(0);
             }
-
-            strncat(response->HTTP, OK, strlen(OK));
+            //send the header. 
             send(remote, good, strlen(good), 0);
             send(remote, content, strlen(content), 0);
 
+            //read from the file stream
             while((nmemb = fread(read, sizeof(char), 254, html))>0) 
             {
                 read[strlen(read)] = '\0';
                 send(remote, read, nmemb, 0);
             }
-           
-            printf("here\n"); 
+            //try and send the two /n/n the browser looks for... doesn't work
+            send(remote, finish, strlen(finish), 0); 
+            fclose(html); 
             free(response);
             close(remote);
             return 0;
@@ -226,6 +243,7 @@ int main(int argc, char *argv[])
 
 }
 
+//close as best as possible
 void sig_handler(int signum)
 {   
     free(path);
@@ -234,11 +252,10 @@ void sig_handler(int signum)
     exit(0);
 }
 
+//The function is supposed to take the request, parse it and then return it for sending
 struct parsed_request *parse_func(char *buf)
 {
-    char *fnf = "404: file not found";
-    char *ise = "500: Internal Server Error\n";
-    char *OK = "200 OK";
+    char *ise = "HTTP/1.1 500 Internal Server Error\n";
     char read[256] = {0};
     char *www = "/www";
     char *cgi = "/cgi-bin/"; 
@@ -261,19 +278,17 @@ struct parsed_request *parse_func(char *buf)
 
     token = strtok(NULL, " ");
     strchk = strncmp(token, cgi, strlen(cgi));
-    response->file =  strncat(path, token, strlen(token));
     if(strchk == 0)
     {
         response->flag = 1;
+        response->file =  strncat(path, token, strlen(token));
     }
     else
     {
-        //response->file = strncpy(path, www, strlen(www));
-    }
-    
-    token = strtok(NULL, "\\");
-    response->HTTP = token;
-   
+        response->file = strncpy(path, www, strlen(www));
+        response->file = strncat(path, token, strlen(token));
+    }    
+    printf("response->file %s\n", response->file);
     response->file[strlen(response->file)] = '\0';
     return (response);
 }
