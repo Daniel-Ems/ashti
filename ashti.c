@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
 
    
     char *good = "HTTP/1.1 200 OK\n";
-    char *content = "Content-type: text/html\n";
+    char *content = "Content-type: text/html\n\n";
     int nmemb;
     FILE *html;
     char *finish = "\n\n";
