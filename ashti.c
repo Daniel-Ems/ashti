@@ -285,7 +285,7 @@ struct parsed_request *parse_func(char *buf)
     }
     else
     {
-        response->file = strncpy(path, www, strlen(www));
+        response->file = strncat(path, www, strlen(www));
         response->file = strncat(path, token, strlen(token));
     }    
     printf("response->file %s\n", response->file);
