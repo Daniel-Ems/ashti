@@ -138,6 +138,8 @@ int main(int argc, char *argv[])
 
     printf("dir : %s\n", path);
    
+    char *good = "HTTP:/1.1 200 OK\n";
+    char *content = "Content-type: text/html\n\n";
     int nmemb;
     FILE *html;
     char read[256] = {0};
@@ -186,19 +188,20 @@ int main(int argc, char *argv[])
                 {
                     strncat(response->HTTP, fnf, strlen(fnf));
                     send(remote, response->HTTP, strlen(response->HTTP), 0);
+                    send(remote, content, strlen(content), 0);
                     exit(0);
                 }
 
                 strncat(response->HTTP, OK, strlen(OK));
-                send(remote, response->HTTP, strlen(response->HTTP), 0);
+                send(remote, good, strlen(good), 0);
+                send(remote, content, strlen(content), 0);
 
                 while((nmemb = fread(read, sizeof(char), 254, html))>0) 
                 {
                     read[strlen(read)] = '\0';
                     send(remote, read, nmemb, 0);
-                } 
-             
-                received = recv(remote, buf, sizeof(buf)-1, 0);
+                }
+                break;
             }
             if (received < 0)
             {
