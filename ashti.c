@@ -138,14 +138,12 @@ int main(int argc, char *argv[])
 
     printf("dir : %s\n", path);
    
+    int nmemb;
     FILE *html;
-    char *fnf = "404: file not found";
     char read[256] = {0};
-    char *www = "/www";
-    char *cgi = "/cgi-bin/"; 
-    char *GET = "GET";
-    char *token;
     int strchk = '\0';
+    char *fnf = " 404 Not Found\n";
+    char *OK = " 200 OK\n";
     for (;;) 
     {
         request *response;
@@ -172,11 +170,33 @@ int main(int argc, char *argv[])
             {
                           
                 response = parse_func(buf);
-                if(response->flag == 1)
+                if(response->flag < 0 )
                 {
                     send(remote, response->mess, strlen(response->mess), 0);
                     exit(0);
                 }
+                else if(response->flag > 0)
+                {
+                    //cgi things
+                }
+                else
+                
+                html = fopen(response->file, "r");
+                if(!html)
+                {
+                    strncat(response->HTTP, fnf, strlen(fnf));
+                    send(remote, response->HTTP, strlen(response->HTTP), 0);
+                    exit(0);
+                }
+
+                strncat(response->HTTP, OK, strlen(OK));
+                send(remote, response->HTTP, strlen(response->HTTP), 0);
+
+                while((nmemb = fread(read, sizeof(char), 254, html))>0) 
+                {
+                    read[strlen(read)] = '\0';
+                    send(remote, read, nmemb, 0);
+                } 
              
                 received = recv(remote, buf, sizeof(buf)-1, 0);
             }
@@ -184,7 +204,7 @@ int main(int argc, char *argv[])
             {
                 perror("Problem receiving");
             }
-
+            
             free(response);
             close(remote);
             return 0;
@@ -200,8 +220,7 @@ int main(int argc, char *argv[])
 }
 
 void sig_handler(int signum)
-{
-        
+{   
     free(path);
     close(sd);
     close(remote);
@@ -222,11 +241,13 @@ struct parsed_request *parse_func(char *buf)
     
     request *response = malloc(sizeof(*response));        
 
+    response->flag = 0;
+
     token = strtok(buf, " ");
     strchk = strncmp(token, GET, strlen(GET));
     if(strchk != 0)
     {
-        response->flag = 1;
+        response->flag = -1;
         response->mess = ise;
         return(response);
     }
@@ -235,16 +256,18 @@ struct parsed_request *parse_func(char *buf)
     strchk = strncmp(token, cgi, strlen(cgi));
     if(strchk == 0)
     {
+        response->flag = 1;
         response->file = token;
     }
     else
     {
-        response->file = strncpy(path, www, strlen(www));
+        //response->file = strncpy(path, www, strlen(www));
         response->file =  strncat(path, token, strlen(token));
     }
     
-    response->HTTP = strtok(NULL, "\n");
-              
+    token = strtok(NULL, "\\");
+    response->HTTP = token;
+   
     response->file[strlen(response->file)] = '\0';
     return (response);
 }
