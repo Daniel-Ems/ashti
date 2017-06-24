@@ -75,6 +75,7 @@ int main(int argc, char *argv[])
         return 2;
     }
    
+    //Create a socket   
     sd = socket(results->ai_family, results->ai_socktype,0);
     if(sd < 0)
     {
@@ -86,6 +87,7 @@ int main(int argc, char *argv[])
     int set = 1;
     setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set));
     
+    //bind socket to address and port
     err = bind(sd, results->ai_addr, results->ai_addrlen);
     if(err < 0)
     {
@@ -105,28 +107,28 @@ int main(int argc, char *argv[])
         return 4;
     }
     
+    // handle control c
     struct sigaction ignorer = {0};
     ignorer.sa_handler = sig_handler;
     sigaction(SIGINT, &ignorer, NULL);
+   //END OF COPIED CODE
      
-    
+   //ORIGINAL CODE
     printf("MEMO: Change port number before you submit: %s\n", port );
     
     //strip out the directory
     char *directory = NULL;
-    int error = -1;
+
     directory = argv[1];
     printf("%s\n", directory);
     err = access(directory, F_OK);
     if(err == -1)
     {
-        printf("Something bad happened\n");
+        printf("Not a valid directory\n");
+        exit(0);
     }
 
-    //TEST
-    printf("directory entered %s\n", directory);
-
-   
+    //Create room for the path
     path = calloc(PATH_MAX, sizeof(char) );
     if(path == NULL)
     {
@@ -134,18 +136,23 @@ int main(int argc, char *argv[])
         exit(0);
     }
    
+    //Add the directory to the path
     strncpy(path, directory, strlen(directory));
 
-    printf("dir : %s\n", path);
    
-    char *good = "HTTP:/1.1 200 OK\n";
-    char *content = "Content-type: text/html\n\n";
+    char *good = "HTTP/1.1 200 OK\n";
+    char *content = "Content-type: text/html\n\n\n";
     int nmemb;
     FILE *html;
     char read[256] = {0};
     int strchk = '\0';
     char *fnf = " 404 Not Found\n";
     char *OK = " 200 OK\n";
+    //Partially Copied Code
+    //Author: Liam Echlin
+    //Source: networking/day03/tcp_server.c
+    //Descrption: the for loop and child fork was taken from the tcp_server.c and modified 
+    //to fit this particular project. Much was added, and some remains.
     for (;;) 
     {
         request *response;
@@ -166,48 +173,45 @@ int main(int argc, char *argv[])
             close(sd);
             
             ssize_t received = recv(remote, buf, sizeof(buf)-1, 0);
-            buf[received] = '\0';        
-            
-            while(received > 0)
-            {
-                          
-                response = parse_func(buf);
-                if(response->flag < 0 )
-                {
-                    send(remote, response->mess, strlen(response->mess), 0);
-                    exit(0);
-                }
-                else if(response->flag > 0)
-                {
-                    //cgi things
-                }
-                else
-                
-                html = fopen(response->file, "r");
-                if(!html)
-                {
-                    strncat(response->HTTP, fnf, strlen(fnf));
-                    send(remote, response->HTTP, strlen(response->HTTP), 0);
-                    send(remote, content, strlen(content), 0);
-                    exit(0);
-                }
-
-                strncat(response->HTTP, OK, strlen(OK));
-                send(remote, good, strlen(good), 0);
-                send(remote, content, strlen(content), 0);
-
-                while((nmemb = fread(read, sizeof(char), 254, html))>0) 
-                {
-                    read[strlen(read)] = '\0';
-                    send(remote, read, nmemb, 0);
-                }
-                break;
-            }
-            if (received < 0)
+             if (received < 0)
             {
                 perror("Problem receiving");
             }
+            buf[received] = '\0';        
             
+                          
+            response = parse_func(buf);
+            if(response->flag < 0 )
+            {
+                send(remote, response->mess, strlen(response->mess), 0);
+                exit(0);
+            }
+            else if(response->flag > 0)
+            {
+                html = popen(response->file, "r");                    
+            }
+            else
+            
+            html = fopen(response->file, "r");
+            if(!html)
+            {
+                strncat(response->HTTP, fnf, strlen(fnf));
+                send(remote, response->HTTP, strlen(response->HTTP), 0);
+                send(remote, content, strlen(content), 0);
+                exit(0);
+            }
+
+            strncat(response->HTTP, OK, strlen(OK));
+            send(remote, good, strlen(good), 0);
+            send(remote, content, strlen(content), 0);
+
+            while((nmemb = fread(read, sizeof(char), 254, html))>0) 
+            {
+                read[strlen(read)] = '\0';
+                send(remote, read, nmemb, 0);
+            }
+           
+            printf("here\n"); 
             free(response);
             close(remote);
             return 0;
@@ -219,7 +223,7 @@ int main(int argc, char *argv[])
         }
         close(remote);
     }
-    //END OF COPIED CODE
+
 }
 
 void sig_handler(int signum)
@@ -257,15 +261,14 @@ struct parsed_request *parse_func(char *buf)
 
     token = strtok(NULL, " ");
     strchk = strncmp(token, cgi, strlen(cgi));
+    response->file =  strncat(path, token, strlen(token));
     if(strchk == 0)
     {
         response->flag = 1;
-        response->file = token;
     }
     else
     {
         //response->file = strncpy(path, www, strlen(www));
-        response->file =  strncat(path, token, strlen(token));
     }
     
     token = strtok(NULL, "\\");
